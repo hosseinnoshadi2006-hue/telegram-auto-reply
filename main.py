@@ -10,8 +10,6 @@ TELEGRAM_API = f"https://api.telegram.org/bot{TOKEN}"
 REPLY = """سلام 👋
 پیام شما دریافت شد. در اولین فرصت پاسخ خواهم داد."""
 
-replied_users = set()
-
 
 @app.get("/")
 def home():
@@ -30,15 +28,16 @@ async def telegram_webhook(request: Request):
 
     business_connection_id = message.get("business_connection_id")
     chat = message.get("chat")
+    text = message.get("text", "")
 
     if not business_connection_id or not chat:
         return {"ok": True}
 
-    chat_id = chat["id"]
-
-    # اگر قبلاً به این شخص جواب داده‌ایم، دوباره جواب نده
-    if chat_id in replied_users:
+    # فقط اگر کلمه «مشاوره» داخل پیام باشد
+    if "مشاوره" not in text:
         return {"ok": True}
+
+    chat_id = chat["id"]
 
     data = {
         "business_connection_id": business_connection_id,
@@ -51,7 +50,5 @@ async def telegram_webhook(request: Request):
         json=data,
         timeout=10
     )
-
-    replied_users.add(chat_id)
 
     return {"ok": True}
