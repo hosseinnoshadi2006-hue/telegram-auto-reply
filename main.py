@@ -36,12 +36,7 @@ REPLY = """دانش آموز عزیز سلام😍
 
 🟢از چه طریقی با ما آشنا شدین؟"""
 
-JOIN_MESSAGE = """برای دریافت اطلاعات مشاوره و رزرو یک جلسه رایگان ، ابتدا عضو کانال ما شوید و سپس "مشاوره" رو ارسال کنید 👇"""
-
-
-@app.get("/")
-def home():
-    return {"status": "running"}
+JOIN_MESSAGE = """برای دریافت اطلاعات مشاوره، ابتدا عضو کانال ما شوید 👇"""
 
 
 def check_membership(user_id):
@@ -81,18 +76,91 @@ def send_message(business_connection_id, chat_id, text, reply_markup=None):
     )
 
 
+@app.get("/")
+def home():
+    return {"status": "running"}
+
+
 @app.post("/telegram")
 async def telegram_webhook(request: Request):
 
     update = await request.json()
+
+    # =========================
+    # کلیک روی دکمه «عضو شدم»
+    # =========================
+    callback = update.get("business_message", None)
+
+    if "callback_query" in update:
+
+        query = update["callback_query"]
+
+        data = query.get("data")
+        user = query.get("from")
+
+        if data == "check_membership" and user:
+
+            user_id = user["id"]
+
+            # تایید عضویت
+            is_member = check_membership(user_id)
+
+            # پاسخ به کلیک دکمه
+            requests.post(
+                f"{TELEGRAM_API}/answerCallbackQuery",
+                json={
+                    "callback_query_id": query["id"],
+                    "text": "عضویت شما بررسی شد ✅"
+                    if is_member
+                    else "هنوز عضو کانال نیستید ❌",
+                    "show_alert": True
+                },
+                timeout=10
+            )
+
+            if not is_member:
+                return {"ok": True}
+
+            # پیدا کردن چت Business
+            message = query.get("message")
+
+            if not message:
+                return {"ok": True}
+
+            business_connection_id = message.get(
+                "business_connection_id"
+            )
+
+            chat = message.get("chat")
+
+            if not business_connection_id or not chat:
+                return {"ok": True}
+
+            chat_id = chat["id"]
+
+            send_message(
+                business_connection_id,
+                chat_id,
+                REPLY
+            )
+
+            return {"ok": True}
+
+    # =========================
+    # پیام جدید
+    # =========================
 
     message = update.get("business_message")
 
     if not message:
         return {"ok": True}
 
-    business_connection_id = message.get("business_connection_id")
+    business_connection_id = message.get(
+        "business_connection_id"
+    )
+
     chat = message.get("chat")
+
     text = message.get("text", "")
 
     if not business_connection_id or not chat:
@@ -104,7 +172,7 @@ async def telegram_webhook(request: Request):
 
     chat_id = chat["id"]
 
-    # بررسی عضویت شخص در کانال
+    # بررسی عضویت
     is_member = check_membership(chat_id)
 
     if not is_member:
@@ -115,6 +183,12 @@ async def telegram_webhook(request: Request):
                     {
                         "text": "عضویت در کانال 📢",
                         "url": "https://t.me/dentor_consultt"
+                    }
+                ],
+                [
+                    {
+                        "text": "عضو شدم ✅",
+                        "callback_data": "check_membership"
                     }
                 ]
             ]
