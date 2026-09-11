@@ -7,6 +7,8 @@ app = FastAPI()
 TOKEN = os.environ["BOT_TOKEN"]
 TELEGRAM_API = f"https://api.telegram.org/bot{TOKEN}"
 
+CHANNEL = "@dentor_consultt"
+
 REPLY = """دانش آموز عزیز سلام😍
 از اینکه تیم ما رو انتخاب کردی سپاسگزاریم❤️
 مطمئن باش پشیمون نمیشی😉
@@ -34,10 +36,49 @@ REPLY = """دانش آموز عزیز سلام😍
 
 🟢از چه طریقی با ما آشنا شدین؟"""
 
+JOIN_MESSAGE = """برای دریافت اطلاعات مشاوره، ابتدا عضو کانال ما شوید 👇"""
+
 
 @app.get("/")
 def home():
     return {"status": "running"}
+
+
+def check_membership(user_id):
+    response = requests.get(
+        f"{TELEGRAM_API}/getChatMember",
+        params={
+            "chat_id": CHANNEL,
+            "user_id": user_id
+        },
+        timeout=10
+    )
+
+    result = response.json()
+
+    if not result.get("ok"):
+        return False
+
+    status = result["result"]["status"]
+
+    return status in ["creator", "administrator", "member"]
+
+
+def send_message(business_connection_id, chat_id, text, reply_markup=None):
+    data = {
+        "business_connection_id": business_connection_id,
+        "chat_id": chat_id,
+        "text": text
+    }
+
+    if reply_markup:
+        data["reply_markup"] = reply_markup
+
+    requests.post(
+        f"{TELEGRAM_API}/sendMessage",
+        json=data,
+        timeout=10
+    )
 
 
 @app.post("/telegram")
@@ -57,22 +98,42 @@ async def telegram_webhook(request: Request):
     if not business_connection_id or not chat:
         return {"ok": True}
 
-    # فقط اگر کلمه «مشاوره» داخل پیام باشد
+    # فقط پیام‌هایی که «مشاوره» دارند
     if "مشاوره" not in text:
         return {"ok": True}
 
     chat_id = chat["id"]
 
-    data = {
-        "business_connection_id": business_connection_id,
-        "chat_id": chat_id,
-        "text": REPLY
-    }
+    # بررسی عضویت شخص در کانال
+    is_member = check_membership(chat_id)
 
-    requests.post(
-        f"{TELEGRAM_API}/sendMessage",
-        json=data,
-        timeout=10
+    if not is_member:
+
+        keyboard = {
+            "inline_keyboard": [
+                [
+                    {
+                        "text": "عضویت در کانال 📢",
+                        "url": "https://t.me/dentor_consultt"
+                    }
+                ]
+            ]
+        }
+
+        send_message(
+            business_connection_id,
+            chat_id,
+            JOIN_MESSAGE,
+            keyboard
+        )
+
+        return {"ok": True}
+
+    # اگر عضو کانال بود
+    send_message(
+        business_connection_id,
+        chat_id,
+        REPLY
     )
 
     return {"ok": True}
